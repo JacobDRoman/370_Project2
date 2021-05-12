@@ -6,6 +6,7 @@ from numpy import linalg as LA
 from matplotlib.collections import LineCollection
 from mpl_toolkits.mplot3d import Axes3D
 from numpy import percentile
+import time
 ####Pyplot font settings
 from matplotlib import rc
 rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
@@ -50,19 +51,28 @@ def waterfall_plot(fig,ax,X,Y,Z):
 #and IC u(x,0) =0;
 #This code does a convergence test in space
 #Params for the problem
-a=2
-b=15
-mu = 3
-T = 10
-c = (T/mu)**(1/2)
+a=0
+b=.65
+d=.13
+h=.05
+mu = 5.78e-3
+T_s = 66.3398
+v = (T_s/mu)**(1/2)
 ln = b-a
-T = 5 #Final time to run to
+n_harm = 1
+T = .6 #Final time to run to
 #Make dt small in spatial convergence test so that time error
 #doesn't pollute convergence
-dt = 1e-3
+dt = 1e-4
 #Exact solution
+def sum (xl, tl, n):
+    return ((2*h*L**2)/(pi**2*n**2*d*(L-d))*sym.sin((n*pi*d)/L))*sym.sin((n*pi*xl)/L)*sym.cos((n*pi*v*tl)/L)
+
 def uex (xl, tl):
-    return np.sin(tl*np.sin(6*pi*(xl-a)/ln))
+    u = 0
+    for i in range(1,n_harm+1):
+        u += sum(xl,tl,i)
+    return (u)
 #Initial condition
 def eta(xl):
     return uex(xl, 0)
@@ -71,7 +81,7 @@ t = sym.Symbol('T')
 x = sym.Symbol('X')
 uexa = sym.sin(t*sym.sin(6*pi*(x-a)/ln))
 #RHS symbolic function
-f = sym.diff(uexa, t) - (c**2)*sym.diff(sym.diff(uexa,x), x)
+f = sym.diff(uexa, t) - (v**2)*sym.diff(sym.diff(uexa,x), x)
 #Making rhs function callable
 func = sym.lambdify((x, t), f)
 def rhs_build(nl, xl, dx, tl):
@@ -94,7 +104,7 @@ def rhs_build(nl, xl, dx, tl):
         b[jjj] = b[jjj] + np.trapz( func(x_rgt, tl)*phij_rgt, x_rgt)
     return b
 #n values to be used
-nvect = np.array([120])
+nvect = np.array([100])
 dxvect = ln/nvect
 #Initialize Error vector
 err = np.zeros(len(nvect))
@@ -116,8 +126,10 @@ u = np.zeros((n - 1, ntsv))
 #Constructing grid
 dx = ln/n;
 xj = np.linspace(a, b, n+1)
+print(xj)
+# print(len(xj[1:-1]))
 #Build L (matrix associated with u'' term):
-L = (c**2)*(1/dx)*(-2*np.diag(np.ones(n-1), k=0) +np.diag(np.ones(n-2), k=-1) +np.diag(np.ones(n-2), k=1))
+L = (v**2)*(1/dx)*(-2*np.diag(np.ones(n-1), k=0) +np.diag(np.ones(n-2), k=-1) +np.diag(np.ones(n-2), k=1))
 #Build N (matrix associated with u term):
 N = dx*((2/3)*np.diag(np.ones(n-1), k=0) + (1/6)*np.diag(np.ones(n-2), k=-1) + (1/6)*np.diag(np.ones(n-2), k=1))
 E = LA.solve(N, L)
@@ -125,7 +137,14 @@ E = LA.solve(N, L)
 I = np.eye(n-1)
 #Initialize for time stepping
 
-uk = np.zeros(len(xj[1:-1]))
+def init(x):
+    if(x < d):
+        return((h*x)/d)
+    else:
+        return((h*(b-x))/(b-d))
+uk = xj[1:-1]
+for i in range(n-3):
+    uk[i] = init(uk[i])
 tk = 0
 cnt = 0
 #Do time stepping:
@@ -147,10 +166,10 @@ for jj in range(len(tvect)):
 # err = LA.norm(ukp1 - uex(xj[1:-1], T))/LA.norm(uex(xj[1:-1], T))
 # print("Error: ", err, "n: ", n)
 # print("Cnt: ", cnt)
-
-
+print(xj)
 # Create waterfall plot
 X, Tv = np.meshgrid(xj[1:-1], tsv)
+np.savetxt('x.txt',X)
 print("Shapes of X: ", np.shape(X), ", T: ", np.shape(Tv), ",u: ", np.shape(u))
 plt.rcParams['font.size'] = 15
 fig = plt.figure(figsize=(8, 15))
@@ -158,9 +177,10 @@ ax = fig.add_subplot(121, projection='3d')
 waterfall_plot(fig, ax, X, Tv, u.transpose())
 ax.set_xlabel('$x$');
 ax.set_xlim3d(a, b)
-ax.set_ylabel('$t$'); # ax.set_ylim3d(tsv[0],tsv[ntsv-1])
-ax.set_xticks(np.arange(0, 15.1, 5))
-ax.set_yticks(np.arange(0, 6.1, 2))
+ax.set_ylabel('$t$')
+ax.set_ylim3d(tsv[0],tsv[ntsv-1])
+ax.set_xticks(np.arange(0, .66, .13))
+ax.set_yticks(np.arange(0, .6, 2))
 ax.set_zlabel('$u$'); # ax.set_zlim3d(np.min(u),np.max(u))
 ax.set_zlim3d(-1, 1)
 ax.set_zticks(np.array([-1, 0, 1]))
@@ -177,7 +197,8 @@ plt.title('$u_{FD}$')
 # ax.set_zticks(np.array([-1, 0, 1]))
 # plt.title('$u_{exact}$')
 # plt.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.98, wspace=0.25)
-plt.savefig("Q4_waterfall.png", bbox_inches='tight', dpi=200)
+plt.show()
+# plt.savefig("Q4_waterfall.png", bbox_inches='tight', dpi=200)
 # plt.clf()
 # plt.rcParams['font.size'] = 20
 # plt.figure(figsize=(8, 10))
